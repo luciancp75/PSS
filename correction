@@ -1,29 +1,49 @@
 
-function Start-PerfLog($scenarioName) {
-    $logPath = Join-Path $logDir "$scenarioName.blg"
-    # Set collector with explicit output path
-    logman import -n $counterSetName -xml $templatePath
-    logman update $counterSetName -o $logPath
-    logman start $counterSetName
-    Write-Output "Started PerfMon logging for $scenarioName"
+# PowerShell Script: RunPerfmonScenario.ps1
+
+# Define scenario options
+$scenarios = @(
+    "Idle",
+    "OfficeWork",
+    "WebBrowsing",
+    "VideoPlayback",
+    "3DModeling"
+)
+
+# Prompt user for scenario
+$scenario = $scenarios | Out-GridView -Title "Select a Test Scenario" -PassThru
+if (-not $scenario) {
+    Write-Output "No scenario selected. Exiting."
+    exit
 }
 
-function Stop-PerfLog($scenarioName) {
-    logman stop $counterSetName -ets
+# Paths
+$templatePath = "$PSScriptRoot\\rdp_bandwidth_template.xml"  # Update if needed
+$logDir = "$PSScriptRoot\\PerfLogs"
+$counterSetName = "TempPerfmonSet"
+$csvPath = Join-Path $logDir "$scenario.csv"
 
-    # Wait for log file to flush (max 10 seconds)
-    $logPath = Join-Path $logDir "$scenarioName.blg"
-    $maxWait = 10
-    while (!(Test-Path $logPath) -and $maxWait -gt 0) {
-        Start-Sleep -Seconds 1
-        $maxWait--
-    }
+# Ensure log directory exists
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-    if (Test-Path $logPath) {
-        Write-Output "Log saved: $logPath"
-    } else {
-        Write-Output "Warning: Log file not found for $scenarioName"
-    }
+# Import, update, and start data collector
+logman import -n $counterSetName -xml $templatePath
+logman update $counterSetName -o "$logDir\\$scenario.blg"
+logman start $counterSetName
+Write-Output "PerfMon started for scenario '$scenario'. Collecting for 5 minutes..."
 
-    logman delete $counterSetName
+# Wait 5 minutes
+Start-Sleep -Seconds 300
+
+# Stop and convert
+logman stop $counterSetName -ets
+logman delete $counterSetName
+
+# Convert BLG to CSV
+$blgPath = "$logDir\\$scenario.blg"
+if (Test-Path $blgPath) {
+    relog $blgPath -f csv -o $csvPath
+    Write-Output "Results saved to $csvPath"
+} else {
+    Write-Output "Log file not found: $blgPath"
 }
