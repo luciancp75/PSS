@@ -1,0 +1,63 @@
+
+# Set Variables
+$testScenarios = @(
+    @{ Name = "Idle"; Command = ""; Duration = 300 },
+    @{ Name = "OfficeWork"; Command = "start winword"; Duration = 300 },
+    @{ Name = "WebBrowsing"; Command = "start chrome https://www.wikipedia.org"; Duration = 300 },
+    @{ Name = "VideoPlayback"; Command = "start chrome https://www.youtube.com/watch?v=aqz-KE-bpKQ"; Duration = 180 },
+    @{ Name = "3DModeling"; Command = "start blender"; Duration = 300 }
+)
+
+$logDir = "C:\RDPTestLogs"
+$templatePath = "C:\Path\To\rdp_bandwidth_template.xml"  # Update with actual path
+$counterSetName = "RDPTest"
+
+# Ensure log directory exists
+New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+
+function Set-RDPCompression($mode) {
+    # mode: 0 = Optimized for least bandwidth, 1 = Balanced, 2 = Optimized for quality
+    Write-Output "Setting RDP compression mode to $mode"
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" -Name "RemoteDesktopProtocolCompressionLevel" -Value $mode -Type DWord -Force
+}
+
+function Start-PerfLog($scenarioName) {
+    logman import -n $counterSetName -xml $templatePath
+    logman start $counterSetName
+    Write-Output "PerfMon logging started for $scenarioName"
+}
+
+function Stop-PerfLog($scenarioName) {
+    $logFile = Join-Path $logDir "$scenarioName.blg"
+    logman stop $counterSetName -ets
+    logman export -n $counterSetName -xml $templatePath
+    Move-Item "$env:SystemDrive\PerfLogs\Admin\$counterSetName\*" $logFile -Force
+    logman delete $counterSetName
+    Write-Output "PerfMon logging stopped and saved for $scenarioName"
+}
+
+# Main Loop
+foreach ($scenario in $testScenarios) {
+    $name = $scenario.Name
+    $cmd = $scenario.Command
+    $duration = $scenario.Duration
+
+    Write-Output "`n==== Running Test: $name ===="
+    Set-RDPCompression -mode 1  # You can vary this between tests
+    Start-Sleep -Seconds 3
+
+    Start-PerfLog -scenarioName $name
+
+    if ($cmd) {
+        Invoke-Expression $cmd
+    }
+
+    Start-Sleep -Seconds $duration
+
+    Stop-PerfLog -scenarioName $name
+
+    Write-Output "Test $name complete."
+    Start-Sleep -Seconds 5
+}
+
+Write-Output "`nAll tests completed. Logs saved in $logDir"
