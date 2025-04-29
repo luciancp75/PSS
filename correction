@@ -1,0 +1,29 @@
+
+function Start-PerfLog($scenarioName) {
+    $logPath = Join-Path $logDir "$scenarioName.blg"
+    # Set collector with explicit output path
+    logman import -n $counterSetName -xml $templatePath
+    logman update $counterSetName -o $logPath
+    logman start $counterSetName
+    Write-Output "Started PerfMon logging for $scenarioName"
+}
+
+function Stop-PerfLog($scenarioName) {
+    logman stop $counterSetName -ets
+
+    # Wait for log file to flush (max 10 seconds)
+    $logPath = Join-Path $logDir "$scenarioName.blg"
+    $maxWait = 10
+    while (!(Test-Path $logPath) -and $maxWait -gt 0) {
+        Start-Sleep -Seconds 1
+        $maxWait--
+    }
+
+    if (Test-Path $logPath) {
+        Write-Output "Log saved: $logPath"
+    } else {
+        Write-Output "Warning: Log file not found for $scenarioName"
+    }
+
+    logman delete $counterSetName
+}
